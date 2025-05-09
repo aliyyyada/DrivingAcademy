@@ -1,4 +1,5 @@
 from bot_module.states import AUTHENTICATION
+from bot_module.database import DB_connect
 user_states = {}
 
 def set_user_state(user_id, state):
@@ -8,3 +9,4 @@ def set_user_state(user_id, state):
 
 def get_user_state(user_id):
     return user_states.get(user_id, {}).get('state', AUTHENTICATION)
+

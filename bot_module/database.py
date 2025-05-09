@@ -25,14 +25,14 @@ def DB_init():
                 full_name VARCHAR(150) NOT NULL, 
                 password_hash VARCHAR NOT NULL, 
                 phone_number VARCHAR(11) NOT NULL UNIQUE,
-                role VARCHAR CHECK (role IN ('admin', 'student', 'instructor')) DEFAULT NULL
+                role VARCHAR CHECK (role IN ('admin', 'student', 'instructor', 'user')) DEFAULT NULL
             );
             CREATE TABLE IF NOT EXISTS Instructor(
                 id SERIAL PRIMARY KEY,
                 id_user INT REFERENCES Users(id) ON DELETE CASCADE,
-                car_plate VARCHAR(50) NOT NULL,
-                car_model VARCHAR(50) NOT NULL,
-                car_color VARCHAR(50) NOT NULL
+                car_plate VARCHAR(50),
+                car_model VARCHAR(50),
+                car_color VARCHAR(50)
             );
 
             CREATE TABLE IF NOT EXISTS Student(
@@ -53,22 +53,22 @@ def DB_init():
                 date DATE NOT NULL,
                 start_time TIME NOT NULL,
                 end_time TIME NOT NULL,
-                status VARCHAR CHECK (status IN ('free', 'booked', 'cancelled', 'completed')) NOT NULL,
-                UNIQUE (date, start_time, instructor_id)
+                status VARCHAR CHECK (status IN ('free', 'booked', 'canceled', 'completed')) NOT NULL,
+                UNIQUE (date, start_time, instructor_id, status)
             );
             
             CREATE TABLE IF NOT EXISTS Booking(
                 id SERIAL PRIMARY KEY, 
                 session_id INT NOT NULL REFERENCES Session(id) ON DELETE CASCADE,
                 student_id INT NOT NULL REFERENCES Student(id) ON DELETE CASCADE,
-                status VARCHAR CHECK (status IN ('booked', 'cancelled'))
+                status VARCHAR CHECK (status IN ('booked', 'canceled'))
             );
 
             CREATE TABLE IF NOT EXISTS Notification(
                 id SERIAL PRIMARY KEY,
                 student_id INT NOT NULL REFERENCES Student(id) ON DELETE CASCADE,
                 text TEXT NOT NULL,
-                type VARCHAR CHECK (type IN ('session_reminder', 'session_cancelled', 'new_sessions_added')),
+                type VARCHAR CHECK (type IN ('session_reminder', 'session_canceled', 'new_sessions_added')),
                 date TIMESTAMP NOT NULL
             );
             ''')
