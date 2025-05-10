@@ -234,13 +234,14 @@ def instructor_show_calendar(message):
     show_calendar_message(bot, message.chat.id, today.year, today.month)
     set_user_state(message.chat.id, INSTRUCTOR_MENU)
 
-@bot.callback_query_handler(func=lambda callback: callback.data.startswith("month_") or callback.data.startswith("date_") )
+@bot.callback_query_handler(func=lambda callback: (callback.data.startswith("month_") or callback.data.startswith("date_")) and get_user_state(callback.message.chat.id)==INSTRUCTOR_MENU )
 def handle_calendar_navigation_callback(callback):
+
     if callback.data.startswith("month_"):
         handle_calendar_navigation(callback, bot)
-    elif callback.data.startswith("date_") and get_user_state(callback.message.chat.id==INSTRUCTOR_MENU):
+    elif callback.data.startswith("date_") and get_user_state(callback.message.chat.id)==INSTRUCTOR_MENU:
         date_selected = handle_calendar_navigation(callback, bot)
-        print(date_selected)
+
         with DB_connect() as conn:
             with conn.cursor() as cur:
                 cur.execute('''
@@ -248,7 +249,8 @@ def handle_calendar_navigation_callback(callback):
                             s.start_time, 
                             s.end_time, 
                             COALESCE(u.full_name, 'Свободно') AS student_full_name, 
-                            s.status AS slot_status
+                            s.status,
+                            b.status
                         FROM 
                             session s
                         LEFT JOIN 
@@ -263,7 +265,7 @@ def handle_calendar_navigation_callback(callback):
                                 FROM instructor i
                                 JOIN users u2 ON u2.id = i.id_user
                                 WHERE u2.phone_number = %s
-                            ) AND (s.status='booked' OR s.status='free')
+                            ) AND (s.status='booked' OR s.status='free') 
                         ORDER BY 
                             s.start_time;
                        
@@ -271,13 +273,16 @@ def handle_calendar_navigation_callback(callback):
 
                     ''', (date_selected, user_states[callback.message.chat.id]['phone'],))
                 schedule = cur.fetchall()
-                print(schedule)
-                # TODO: изменила sql запрос, добавила в where проверку статуса сессии, надо протестить как работает
+
+
 
         if schedule:
             response = f"Расписание на {date_selected}:\n"
-            for start, end, student, status in schedule:
-                response += f"{start}-{end} | {student}\n"
+            for start, end, student, status_session, status_booking in schedule:
+                if status_session=='free':
+                    response += f"{start}-{end} | Свободно\n"
+                elif status_booking=='booked' and status_session=='booked':
+                    response += f"{start}-{end} | {student}\n"
 
         else:
             response = f"На {date_selected} занятий нет."

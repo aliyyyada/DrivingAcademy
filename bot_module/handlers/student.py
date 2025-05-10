@@ -63,7 +63,7 @@ def student_show_calendar(message):
     today = date.today()
     show_calendar_message(bot, message.chat.id, today.year, today.month)
 
-@bot.callback_query_handler(func=lambda callback: callback.data.startswith("month_") or callback.data.startswith("date_") )
+@bot.callback_query_handler(func=lambda callback: (callback.data.startswith("month_") or callback.data.startswith("date_")) and get_user_state(callback.message.chat.id)==MAIN_MENU )
 def student_sign_up(callback):
     if callback.data.startswith("month_"):
         handle_calendar_navigation(callback, bot)
