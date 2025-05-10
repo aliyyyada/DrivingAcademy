@@ -7,7 +7,7 @@ from telebot import TeleBot
 from psycopg2.extras import DictCursor
 from bot_module.handlers.student import *
 from bot_module.loader import bot
-#import datetime
+from bot_module.calendar import generate_calendar, handle_calendar_navigation, show_calendar_message
 from datetime import datetime, date, timedelta
 from apscheduler.schedulers.background import BackgroundScheduler
 
@@ -227,79 +227,60 @@ def back_instructor_menu(message):
     set_user_state(message.chat.id, INSTRUCTOR_MENU)
     instructor_menu(message.chat.id)
 
-def generate_calendar(year, month):
-    markup = types.InlineKeyboardMarkup()
-    days = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
-    row = [types.InlineKeyboardButton(day, callback_data="ignore") for day in days]
-    markup.row(*row)
-
-    first_day = date(year, month, 1)
-    start_weekday = first_day.weekday()
-    days_in_month = (date(year, month+1, 1) - timedelta(days=1)).day if month < 12 else 31
-
-    row = [types.InlineKeyboardButton(" ", callback_data="ignore")] * start_weekday
-    for day in range(1, days_in_month + 1):
-        row.append(types.InlineKeyboardButton(str(day), callback_data=f"date_{year}_{month}_{day}"))
-        if len(row) == 7:
-            markup.row(*row)
-            row = []
-    if row:
-        markup.row(*row)
-
-    previous_month = month - 1 if month > 1 else 12
-    next_month = month + 1 if month < 12 else 1
-    previous_year = year - 1 if month == 1 else year
-    next_year = year + 1 if month == 12 else year
-
-    markup.row(
-        types.InlineKeyboardButton("Назад", callback_data=f"month_{previous_year}_{previous_month}"),
-        types.InlineKeyboardButton(f"{month:02}.{year}", callback_data="ignore"),
-        types.InlineKeyboardButton("Вперед", callback_data=f"month_{next_year}_{next_month}")
-    )
-    return markup
-
 
 @bot.message_handler(func=lambda message: message.text == 'Календарь расписания' and get_user_state(message.chat.id) == INSTRUCTOR_MENU)
-def show_calendar(message):
+def instructor_show_calendar(message):
     today = date.today()
+    show_calendar_message(bot, message.chat.id, today.year, today.month)
+    set_user_state(message.chat.id, INSTRUCTOR_MENU)
 
-    bot.send_message(message.chat.id, "Выберите дату:", reply_markup=generate_calendar(today.year, today.month))
-
-@bot.callback_query_handler(func=lambda call: call.data.startswith("month_"))
-def change_month(call):
-    _, year, month = call.data.split("_")
-    bot.edit_message_reply_markup(call.message.chat.id, call.message.message_id, reply_markup=generate_calendar(int(year), int(month)))
-
-@bot.callback_query_handler(func=lambda call: call.data.startswith("date_"))
-def show_schedule(call):
-    _, year, month, day = call.data.split("_")
-    date_selected = f"{int(year):04d}-{int(month):02d}-{int(day):02d}"
-
-    with DB_connect() as conn:
-        with conn.cursor() as cur:
-            cur.execute('''
-                SELECT s.start_time, s.end_time, u.full_name
-                    FROM session s
-                        JOIN booking b ON b.session_id = s.id
-                        JOIN student st ON b.student_id = st.id
-                        JOIN users u ON u.id = st.id_user
-                            WHERE s.instructor_id = (
-                                SELECT i.id FROM instructor i
-                                JOIN users u2 ON i.id_user = u2.id
+@bot.callback_query_handler(func=lambda callback: callback.data.startswith("month_") or callback.data.startswith("date_") )
+def handle_calendar_navigation_callback(callback):
+    if callback.data.startswith("month_"):
+        handle_calendar_navigation(callback, bot)
+    elif callback.data.startswith("date_") and get_user_state(callback.message.chat.id==INSTRUCTOR_MENU):
+        date_selected = handle_calendar_navigation(callback, bot)
+        print(date_selected)
+        with DB_connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute('''
+                        SELECT 
+                            s.start_time, 
+                            s.end_time, 
+                            COALESCE(u.full_name, 'Свободно') AS student_full_name, 
+                            s.status AS slot_status
+                        FROM 
+                            session s
+                        LEFT JOIN 
+                            booking b ON s.id = b.session_id
+                        LEFT JOIN 
+                            student st ON b.student_id = st.id
+                        LEFT JOIN 
+                            users u ON st.id_user = u.id
+                        WHERE 
+                            s.date = %s AND s.instructor_id = (
+                                SELECT i.id
+                                FROM instructor i
+                                JOIN users u2 ON u2.id = i.id_user
                                 WHERE u2.phone_number = %s
-                            ) AND s.date = %s AND b.status = 'booked';
+                            ) AND (s.status='booked' OR s.status='free')
+                        ORDER BY 
+                            s.start_time;
+                       
 
 
-            ''', (user_states[call.message.chat.id]['phone'], date_selected))
-            schedule = cur.fetchall()
+                    ''', (date_selected, user_states[callback.message.chat.id]['phone'],))
+                schedule = cur.fetchall()
+                print(schedule)
+                # TODO: изменила sql запрос, добавила в where проверку статуса сессии, надо протестить как работает
 
-    if schedule:
-        response = f"Расписание на {date_selected}:\n"
-        for start, end, student in schedule:
-            response += f"{start}-{end} | {student}\n"
-    else:
-        response = f"На {date_selected} занятий нет."
+        if schedule:
+            response = f"Расписание на {date_selected}:\n"
+            for start, end, student, status in schedule:
+                response += f"{start}-{end} | {student}\n"
 
-    bot.send_message(call.message.chat.id, response)
+        else:
+            response = f"На {date_selected} занятий нет."
 
+        bot.send_message(callback.message.chat.id, response)
 
