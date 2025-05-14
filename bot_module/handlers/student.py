@@ -8,8 +8,8 @@ from psycopg2.extras import DictCursor
 from bot_module.handlers.student import *
 from bot_module.loader import bot
 from datetime import date, datetime, timedelta
-
 from bot_module.calendar import handle_calendar_navigation, generate_calendar, show_calendar_message
+from bot_module.notification import add_notification_to_schedle, remove_notification_from_schedule
 
 def student_menu(user_id):
     keyboard = [[types.KeyboardButton('Информация об обучении')], [types.KeyboardButton('Записаться на вождение')], [types.KeyboardButton('Предстоящие занятия')]]
@@ -60,8 +60,18 @@ def handle_student_get_info(message):
 
 @bot.message_handler(func=lambda message: message.text=='Записаться на вождение' and get_user_state(message.chat.id)==MAIN_MENU)
 def student_show_calendar(message):
-    today = date.today()
-    show_calendar_message(bot, message.chat.id, today.year, today.month)
+    with DB_connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute('''
+                SELECT st.hours FROM student st 
+                    WHERE st.id_user = (SELECT u.id FROM users u WHERE u.phone_number=%s)
+            ''', (user_states[message.chat.id]['phone'], ))
+            hours = cur.fetchone()
+            if hours and hours[0]>0:
+                today = date.today()
+                show_calendar_message(bot, message.chat.id, today.year, today.month)
+            else:
+                bot.send_message(message.chat.id, 'У вас недостаточно часов для записи на занятие. Пожалуйста, обратитесь в автошколу для получения дополнительных часов.')
 
 @bot.callback_query_handler(func=lambda callback: (callback.data.startswith("month_") or callback.data.startswith("date_")) and get_user_state(callback.message.chat.id)==MAIN_MENU )
 def student_sign_up(callback):
@@ -93,22 +103,27 @@ def student_sign_up(callback):
 
                         slot_time = datetime.combine(datetime.strptime(date_selected, "%Y-%m-%d").date(), start_time)
 
+
                         if slot_time > current_time + timedelta(hours=24):
                             start_time_formatted = start_time.strftime('%H:%M')
                             end_time_formatted = end_time.strftime('%H:%M')
                             button_text = f"{start_time_formatted}-{end_time_formatted}"
                             callback_data = f"signup_{session_id}"
                             markup.add(types.InlineKeyboardButton(button_text, callback_data=callback_data))
+                        
+                        
                         else:
 
                             button_text = f"{start_time}-{end_time} (нельзя записаться)"
                             markup.add(types.InlineKeyboardButton(button_text, callback_data="inactive"))
 
-                    bot.send_message(callback.message.chat.id, "Выберите время для записи на занятие:",
-                                     reply_markup=markup)
+                    sent_message=bot.send_message(callback.message.chat.id, "Выберите время для записи на занятие:", reply_markup=markup)
+                    user_states[callback.message.chat.id]['message_id']=sent_message.message_id
+
                 else:
                     bot.send_message(callback.message.chat.id, "Нет свободных слотов для записи на выбранную дату.")
-                #TODO: добавить максимальное количесвто записей одного студента в день?
+
+
 @bot.callback_query_handler(func=lambda callback: callback.data.startswith("signup_"))
 def handle_sign_up(callback):
     session_id = callback.data.split("_")[1]
@@ -128,9 +143,31 @@ def handle_sign_up(callback):
                 cur.execute('''
                     UPDATE session SET status='booked' WHERE id =%s
                 ''', (session_id, ))
-                conn.commit()
+                cur.execute('''
+                    SELECT b.id 
+                        FROM booking b
+                            WHERE b.session_id =%s AND b.status = 'booked'
+                ''', (session_id, ))
+                booking_id = cur.fetchone()
+                cur.execute('''
+                    SELECT st.hours, st.id 
+                        FROM student st 
+                            JOIN users u ON st.id_user= u.id 
+                                WHERE u.phone_number=%s
+                ''', (user_states[callback.message.chat.id]['phone'], ))
+                student = cur.fetchone()
 
+                if student:
+                    hours = student[0]-1
+                    id = student[1]
+                    cur.execute('''
+                        UPDATE student SET hours=%s WHERE id=%s
+                    ''', (hours, id, ))
+                conn.commit()
+                bot.edit_message_reply_markup(callback.message.chat.id, user_states[callback.message.chat.id]['message_id'],reply_markup=None)
                 bot.send_message(callback.message.chat.id, "Вы успешно записались на занятие!")
+                add_notification_to_schedle(booking_id)
+
             else:
                 bot.send_message(callback.message.chat.id, "Этот слот уже занят или недоступен для записи.")
 
@@ -168,6 +205,7 @@ def handle_student_upcoming_lessons(message):
                     button_text = f'{slot_date} {slot_start_time}-{slot_end_time}' if slot_status=='booked' else f'{slot_date} {slot_start_time}-{slot_end_time} Отменено'
                     markup.add(types.InlineKeyboardButton(button_text, callback_data=f'cancel_booking_session_{session_id}'))
                 bot.send_message(message.chat.id, 'Чтобы отменить запись, нажмите на неё.', reply_markup=markup)
+
             else:
                 bot.send_message(message.chat.id, 'У вас нет предстоящих занятий.')
 
@@ -183,7 +221,8 @@ def get_confirm_cancel(callback):
             ''', (session_id, ))
             session = cur.fetchone()
             if session:
-                bot.send_message(callback.message.chat.id, f'Вы хотите отменить запись на {session[0]} {session[1]}-{session[2]}?', reply_markup=markup)
+                sent_message=bot.send_message(callback.message.chat.id, f'Вы хотите отменить запись на {session[0]} {session[1]}-{session[2]}?', reply_markup=markup)
+                user_states[callback.message.chat.id]['message_id'] = sent_message.message_id
 
 @bot.callback_query_handler(func=lambda callback: callback.data.startswith('yes_confirm_cancel_session_'))
 def cancel_booking(callback):
@@ -196,5 +235,21 @@ def cancel_booking(callback):
             cur.execute('''
                 UPDATE session SET status='free' WHERE id = %s
             ''', (session_id, ))
+            cur.execute('''
+                                SELECT st.hours, st.id 
+                                    FROM student st 
+                                        JOIN users u ON st.id_user= u.id 
+                                            WHERE u.phone_number=%s
+                            ''', (user_states[callback.message.chat.id]['phone'],))
+            student = cur.fetchone()
+
+            if student:
+                hours = student[0] + 1
+                id = student[1]
+                cur.execute('''
+                                    UPDATE student SET hours=%s WHERE id=%s
+                                ''', (hours, id,))
             conn.commit()
-            bot.send_message(callback.message.chat.id, 'Запись на занятие отменено.')
+            bot.edit_message_reply_markup(callback.message.chat.id, user_states[callback.message.chat.id]['message_id'], reply_markup=None)
+            bot.send_message(callback.message.chat.id, 'Запись на занятие отменена.')
+            remove_notification_from_schedule(session_id)

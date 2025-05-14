@@ -261,11 +261,12 @@ def get_user_edit_role(message):
     user_name = message.text.strip()
     with DB_connect() as conn:
         with conn.cursor() as cur:
-            cur.execute('SELECT id FROM users WHERE full_name = %s', (user_name,))
+            cur.execute('SELECT telegram_id FROM users WHERE full_name = %s', (user_name,))
             user = cur.fetchone()
+            print(user[0], message.chat.id)
             if user:
                 target_user_id = user[0]
-                if target_user_id == message.chat.id:
+                if target_user_id == str(message.chat.id):
                     bot.send_message(message.chat.id, 'Вы не можете изменить собственные права.')
                     set_user_state(message.chat.id, ADMIN_MENU)
                     return
@@ -293,7 +294,13 @@ def get_user_edit_role(message):
 @bot.callback_query_handler(func=lambda callback: callback.data in ['admin', 'instructor', 'student', 'user'])
 def edit_role(callback):
     admin_id = callback.message.chat.id
-    target_user_id = user_states.get(admin_id, {}).get('target_user_id')
+    target_user_id_tg = user_states.get(admin_id, {}).get('target_user_id')
+    with DB_connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute('''
+                SELECT id FROM users WHERE telegram_id=%s
+            ''', (target_user_id_tg, ))
+            target_user_id = cur.fetchone()
     new_role = callback.data
     if not target_user_id:
         bot.send_message(admin_id, 'Ошибка: пользователь не выбран.')

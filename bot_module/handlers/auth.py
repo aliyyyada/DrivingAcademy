@@ -28,8 +28,8 @@ def get_role_callback_meassage(callback):
     with DB_connect() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                'INSERT INTO users (full_name, password_hash, phone_number, role) VALUES (%s, %s, %s, %s)',
-                (name, password_hash_str, phone, role,)
+                'INSERT INTO users (telegram_id, full_name, password_hash, phone_number, role) VALUES (%s, %s, %s, %s, %s)',
+                (callback.message.chat.id, name, password_hash_str, phone, role,)
             )
             if role=='student':
                 cur.execute(
@@ -57,6 +57,7 @@ def start(message):
     ]]
     markup = types.InlineKeyboardMarkup(keyboard)
     bot.send_message(message.chat.id, 'Добро пожаловать в Академию Вождения!', reply_markup=markup)
+
     set_user_state(message.chat.id, AUTHENTICATION)
 
 

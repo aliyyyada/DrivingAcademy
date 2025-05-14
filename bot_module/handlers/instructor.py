@@ -10,6 +10,7 @@ from bot_module.loader import bot
 from bot_module.calendar import generate_calendar, handle_calendar_navigation, show_calendar_message
 from datetime import datetime, date, timedelta
 from apscheduler.schedulers.background import BackgroundScheduler
+from bot_module.notification import notify_student_about_new_slots, notify_student_about_lesson_cancel, remove_notification_from_schedule
 
 def instructor_menu(user_id):
     keyboard = [
@@ -57,7 +58,6 @@ def handle_instructor_menu_student_list(message):
             else:
                 bot.send_message(message.chat.id, 'У вас пока нет прикреплённых курсантов.')
 
-#TODO: Отправить сообщение студенту о новых слотах
 @bot.message_handler(func = lambda message: message.text == 'Редактировать расписание' and get_user_state(message.chat.id) == INSTRUCTOR_MENU)
 def handle_instructor_menu_edit_schedule(message):
     keyboard = [
@@ -81,7 +81,8 @@ def handle_instructor_menu_edit_schedule_add_txt_recive(message):
     file_id = message.document.file_id
     file_info = bot.get_file(file_id)
     download_file = bot.download_file(file_info.file_path)
-    schedule_entries = download_file.decode('utf-8').strip().split('\n')
+    mess = download_file.decode('utf-8')
+    schedule_entries = mess.strip().split('\n')
 
     with DB_connect() as conn:
         with conn.cursor() as cur:
@@ -105,6 +106,7 @@ def handle_instructor_menu_edit_schedule_add_txt_recive(message):
 
             conn.commit()
             bot.send_message(message.chat.id, 'Расписание успешно добавлено!')
+            notify_student_about_new_slots(user_states[message.chat.id]['phone'], mess)
         set_user_state(message.chat.id, EDIT_SCHEDULE)
 
 @bot.message_handler(func=lambda message: message.text == 'Добавить расписание (сообщение)' and get_user_state(message.chat.id) == EDIT_SCHEDULE)
@@ -114,7 +116,8 @@ def handle__instructor_menu_edit_schedule_add_message(message):
 
 @bot.message_handler(func=lambda message: get_user_state(message.chat.id) == WAITING_TEXT_SCHEDULE)
 def handle_received_text_schedule(message):
-    schedule_entries = message.text.strip().split("\n")
+    mess = message.text
+    schedule_entries = mess.strip().split("\n")
 
     with DB_connect() as conn:
         with conn.cursor() as cur:
@@ -138,6 +141,7 @@ def handle_received_text_schedule(message):
 
             conn.commit()
             bot.send_message(message.chat.id, 'Расписание успешно добавлено!')
+            notify_student_about_new_slots(user_states[message.chat.id]['phone'], mess)
 
     set_user_state(message.chat.id, EDIT_SCHEDULE)
 
@@ -207,12 +211,19 @@ def confirm_lesson_cancel(callback):
                         UPDATE session SET status = 'canceled' WHERE id = %s
                     ''', (session_id,))
                     cur.execute('''
+                        UPDATE student SET hours=hours+1
+	                        WHERE id=(SELECT b.student_id FROM booking b WHERE b.session_id=%s AND b.status='booked')
+                    ''', (session_id, ))
+
+                    cur.execute('''
                         UPDATE booking SET status = 'canceled' WHERE session_id = %s
                     ''', (session_id,))
 
                     conn.commit()
                     bot.send_message(callback.message.chat.id, "Занятие успешно отменено.")
-                #TODO: отправить уведомление студенту об отмене занятия
+                    notify_student_about_lesson_cancel(session_id)
+                    remove_notification_from_schedule(session_id)
+
                 else:
                     bot.send_message(callback.message.chat.id, "Занятие не найдено.")
         set_user_state(callback.message.chat.id, EDIT_SCHEDULE)
