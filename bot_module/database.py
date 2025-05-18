@@ -55,8 +55,8 @@ def DB_init():
                 date DATE NOT NULL,
                 start_time TIME NOT NULL,
                 end_time TIME NOT NULL,
-                status VARCHAR CHECK (status IN ('free', 'booked', 'canceled', 'completed')) NOT NULL,
-                UNIQUE (date, start_time, instructor_id, status)
+                status VARCHAR CHECK (status IN ('free', 'booked', 'canceled', 'completed')) NOT NULL
+                
             );
             
             CREATE TABLE IF NOT EXISTS Booking(

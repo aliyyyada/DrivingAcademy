@@ -73,12 +73,13 @@ def student_show_calendar(message):
             else:
                 bot.send_message(message.chat.id, 'У вас недостаточно часов для записи на занятие. Пожалуйста, обратитесь в автошколу для получения дополнительных часов.')
 
-@bot.callback_query_handler(func=lambda callback: (callback.data.startswith("month_") or callback.data.startswith("date_")) and get_user_state(callback.message.chat.id)==MAIN_MENU )
+
+@bot.callback_query_handler(func=lambda callback: (callback.data.startswith("month_") or callback.data.startswith("date_")) and get_user_state(callback.message.chat.id) == MAIN_MENU)
 def student_sign_up(callback):
     if callback.data.startswith("month_"):
         handle_calendar_navigation(callback, bot)
-    elif callback.data.startswith("date_") and get_user_state(callback.message.chat.id)==MAIN_MENU:
-        date_selected=handle_calendar_navigation(callback, bot)
+    elif callback.data.startswith("date_") and get_user_state(callback.message.chat.id) == MAIN_MENU:
+        date_selected = handle_calendar_navigation(callback, bot)
         current_time = datetime.now()
         with DB_connect() as conn:
             with conn.cursor() as cur:
@@ -103,22 +104,22 @@ def student_sign_up(callback):
 
                         slot_time = datetime.combine(datetime.strptime(date_selected, "%Y-%m-%d").date(), start_time)
 
-
                         if slot_time > current_time + timedelta(hours=24):
                             start_time_formatted = start_time.strftime('%H:%M')
                             end_time_formatted = end_time.strftime('%H:%M')
                             button_text = f"{start_time_formatted}-{end_time_formatted}"
                             callback_data = f"signup_{session_id}"
                             markup.add(types.InlineKeyboardButton(button_text, callback_data=callback_data))
-                        
-                        
+
+
                         else:
 
                             button_text = f"{start_time}-{end_time} (нельзя записаться)"
                             markup.add(types.InlineKeyboardButton(button_text, callback_data="inactive"))
 
-                    sent_message=bot.send_message(callback.message.chat.id, "Выберите время для записи на занятие:", reply_markup=markup)
-                    user_states[callback.message.chat.id]['message_id']=sent_message.message_id
+                    sent_message = bot.send_message(callback.message.chat.id, "Выберите время для записи на занятие:",
+                                                    reply_markup=markup)
+                    user_states[callback.message.chat.id]['message_id'] = sent_message.message_id
 
                 else:
                     bot.send_message(callback.message.chat.id, "Нет свободных слотов для записи на выбранную дату.")
