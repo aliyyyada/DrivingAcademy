@@ -142,8 +142,8 @@ def handle_auth_password(message):
                     elif role=='admin':
                         admin_menu(message.chat.id)
                     user_states[message.chat.id]['phone'] = phone_number
-            else:
-                bot.send_message(message.chat.id, 'Неверный пароль.')
+                else:
+                    bot.send_message(message.chat.id, 'Неверный пароль.')
             #del user_states[message.chat.id]
 
 

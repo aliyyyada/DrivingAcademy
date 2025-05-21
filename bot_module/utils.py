@@ -11,13 +11,10 @@ def set_user_state(user_id, state):
 def get_user_state(user_id):
     return user_states.get(user_id, {}).get('state', AUTHENTICATION)
 
+def format_date(date_str: str) -> str:
+    dt = datetime.strptime(date_str, "%Y-%m-%d")
+    return dt.strftime("%d.%m.%Y")
 
-
-def format_date(d: date) -> str:
-    return d.strftime("%d.%m.%Y")
-
-def format_time(t: time) -> str:
-    return t.strftime("%H:%M")
-
-def format_datetime(dt: datetime) -> str:
-    return dt.strftime("%d.%m.%Y %H:%M")
+def format_time(time_str: str) -> str:
+    dt = datetime.strptime(time_str, "%H:%M:%S")
+    return dt.strftime("%H:%M")

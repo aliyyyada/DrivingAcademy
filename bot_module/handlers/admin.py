@@ -11,13 +11,15 @@ from bot_module.loader import bot
 def admin_menu(user_id):
     keyboard = [[
         types.KeyboardButton('Редактировать профиль автоинструктора'),
-        types.KeyboardButton('Редактировать профиль студента'),
-        types.KeyboardButton('Редактировать права управления'),
-        types.KeyboardButton('Список курсантов')]
+        types.KeyboardButton('Редактировать профиль студента')],
+        [types.KeyboardButton('Список курсантов'),
+         types.KeyboardButton('Список пользователей')],
+        [types.KeyboardButton('Редактировать права управления')],
     ]
 
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.add(*[i for sublist in keyboard for i in sublist])
+    for row in keyboard:
+        markup.row(*row)
     bot.send_message(user_id, 'Главное меню:', reply_markup=markup)
     set_user_state(user_id, ADMIN_MENU)
 
@@ -34,7 +36,7 @@ def handle_admin_get_student_list(message):
     bot.send_message(message.chat.id, 'Меню управления студентами и курсантами:', reply_markup=markup)
     set_user_state(message.chat.id, 'ADMIN_STUDENT_LIST')
 
-@bot.message_handler(func=lambda message: message.text =='Главное меню' and (get_user_state(message.chat.id)=='ADMIN_STUDENT_LIST'))
+@bot.message_handler(func=lambda message: message.text =='Главное меню' and (get_user_state(message.chat.id)=='ADMIN_STUDENT_LIST' or get_user_state(message.chat.id)=='ADMIN_USER_LIST'))
 def handler_get_admin_menu(message):
     set_user_state(message.chat.id, ADMIN_MENU)
     admin_menu(message.chat.id)
@@ -94,6 +96,73 @@ def process_instructor_name(message):
             else:
                 bot.send_message(message.chat.id, 'У данного инструктора нет закрепленных студентов.')
 
+@bot.message_handler(func= lambda message: message.text =='Список пользователей' and get_user_state(message.chat.id)==ADMIN_MENU)
+def handle_admin_get_list_of_users(message):
+    keyboard = [
+        [types.KeyboardButton('Список инструкторов'), types.KeyboardButton('Список администраторов')],
+        [types.KeyboardButton('Список пользователей')],
+        [types.KeyboardButton('Главное меню')]
+    ]
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    for row in keyboard:
+        markup.row(*row)
+    bot.send_message(message.chat.id, 'Получение данных пользоватлей:', reply_markup=markup)
+    set_user_state(message.chat.id, 'ADMIN_USER_LIST')
+
+@bot.message_handler(func=lambda message: message.text=='Список инструкторов' and get_user_state(message.chat.id)=='ADMIN_USER_LIST')
+def handle_admin_get_list_of_instructors(message):
+    with DB_connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute('''
+                SELECT full_name, phone_number 
+                    FROM users 
+                        where role = 'instructor'
+            ''')
+            instructors= cur.fetchall()
+            if instructors:
+                mes = 'Список инструкторов\n'
+                for instructor in instructors:
+                    mes+=f'\n{instructor[0]}({instructor[1]})'
+                bot.send_message(message.chat.id, mes)
+            else:
+                bot.send_message(message.chat.id, 'Отсутствуют списки инструкторов в БД.')
+
+@bot.message_handler(func=lambda message: message.text=='Список администраторов' and get_user_state(message.chat.id)=='ADMIN_USER_LIST')
+def handle_admin_get_list_of_admins(message):
+    with DB_connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute('''
+                SELECT full_name, phone_number 
+                    FROM users 
+                        where role = 'admin'
+            ''')
+            admins= cur.fetchall()
+            if admins:
+                mes = 'Список администраторов\n'
+                for admin in admins:
+                    mes+=f'\n{admin[0]}({admin[1]})'
+                bot.send_message(message.chat.id, mes)
+            else:
+                bot.send_message(message.chat.id, 'Отсутствуют списки администраторов в БД.')
+
+@bot.message_handler(func=lambda message: message.text=='Список пользователей' and get_user_state(message.chat.id)=='ADMIN_USER_LIST')
+def handle_admin_get_list_of_users(message):
+    with DB_connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute('''
+                SELECT full_name, phone_number 
+                    FROM users 
+                        where role = 'user'
+            ''')
+            users= cur.fetchall()
+            if users:
+                mes = 'Список пользователей\n'
+                for user in users:
+                    mes+=f'\n{user[0]}({user[1]})'
+                bot.send_message(message.chat.id, mes)
+            else:
+                bot.send_message(message.chat.id, 'Отсутствуют списки пользователей в БД.')
+
 @bot.message_handler(func=lambda message: message.text=='Редактировать профиль автоинструктора' and get_user_state(message.chat.id) == ADMIN_MENU)
 def handle_admin_change_instructor_info(message):
     bot.send_message(message.chat.id, 'Введите ФИО автоинструктора, чей профиль Вы хотите изменить.')
@@ -108,18 +177,22 @@ def change_instructor_info(message):
             instructor = cur.fetchone()
 
             if instructor:
-                user_states[message.chat.id] = {
-                    'state': 'ADMIN_CHANGE_INSTRUCTOR_FIELD',
-                    'instructor_name': instructor_name,
-                    'instructor_id': instructor[0]
-                }
+
 
                 markup = types.InlineKeyboardMarkup()
                 markup.add(types.InlineKeyboardButton('Номер машины', callback_data='edit_car_plate'))
                 markup.add(types.InlineKeyboardButton('Модель машины', callback_data='edit_car_model'))
                 markup.add(types.InlineKeyboardButton('Цвет машины', callback_data='edit_car_color'))
+                markup.add(types.InlineKeyboardButton('Готово', callback_data='done_instructor'))
 
-                bot.send_message(message.chat.id, 'Выберите поле для изменения:', reply_markup=markup)
+                mes = bot.send_message(message.chat.id, 'Выберите поле для изменения:', reply_markup=markup)
+                mes_id = mes.message_id
+                user_states[message.chat.id] = {
+                    'state': 'ADMIN_CHANGE_INSTRUCTOR_FIELD',
+                    'instructor_name': instructor_name,
+                    'instructor_id': instructor[0],
+                    'message_id': mes_id
+                }
 
             else:
                 bot.send_message(message.chat.id, 'Инструктор с таким ФИО не найден.')
@@ -160,6 +233,26 @@ def update_instructor_info(message):
     bot.send_message(message.chat.id, f'Поле {field_to_edit} успешно обновлено!')
     set_user_state(message.chat.id, ADMIN_MENU)
 
+@bot.callback_query_handler(func=lambda callback: callback.data=='done_instructor')
+def done_with_editing_instructor_info(callback):
+    user_id = user_states[callback.message.chat.id]['instructor_id']
+    with DB_connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute('''
+                SELECT u.full_name, i.car_plate, i.car_model, i.car_color
+                    FROM users u
+                        JOIN instructor i ON u.id=i.id_user
+                            WHERE u.id=%s
+            ''', (user_id, ))
+            instructor = cur.fetchone()
+            if instructor:
+                mes=f'Автоинструктор:\n{instructor[0]}\n\nАвтомобиль:\n{instructor[2]} {instructor[1]}({instructor[3]})'
+                bot.send_message(callback.message.chat.id, mes)
+
+    bot.edit_message_reply_markup(callback.message.chat.id, user_states[callback.message.chat.id]['message_id'], reply_markup=None)
+
+
+
 @bot.message_handler(func=lambda message: message.text=='Редактировать профиль студента' and get_user_state(message.chat.id) == ADMIN_MENU)
 def handle_admin_change_student_info(message):
     bot.send_message(message.chat.id, 'Введите ФИО студента, чей профиль Вы хотите изменить.')
@@ -174,17 +267,21 @@ def change_student_info(message):
             student = cur.fetchone()
 
             if student:
-                user_states[message.chat.id] = {
-                    'state': 'ADMIN_CHANGE_STUDENT_FIELD',
-                    'student_name': student_name,
-                    'student_id': student[0]
-                }
+
 
                 markup = types.InlineKeyboardMarkup()
                 markup.add(types.InlineKeyboardButton('Инструктор', callback_data='edit_instructor_of_student'))
                 markup.add(types.InlineKeyboardButton('Количество часов обучения', callback_data='edit_study_hours'))
+                markup.add(types.InlineKeyboardButton('Готово', callback_data='done_student'))
 
-                bot.send_message(message.chat.id, 'Выберите поле для изменения:', reply_markup=markup)
+                mes = bot.send_message(message.chat.id, 'Выберите поле для изменения:', reply_markup=markup)
+                mes_id = mes.message_id
+                user_states[message.chat.id] = {
+                    'state': 'ADMIN_CHANGE_STUDENT_FIELD',
+                    'student_name': student_name,
+                    'student_id': student[0],
+                    'message_id': mes_id
+                }
 
             else:
                 bot.send_message(message.chat.id, 'Студент с таким ФИО не найден.')
@@ -252,6 +349,30 @@ def update_student_info(message):
 
     set_user_state(message.chat.id, ADMIN_MENU)
 
+@bot.callback_query_handler(func=lambda callback: callback.data=='done_student')
+def done_with_editing_instructor_info(callback):
+    user_id = user_states[callback.message.chat.id]['student_id']
+    with DB_connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute('''
+                SELECT u.full_name, s.instructor_id, s.hours
+                    FROM users u
+                        JOIN student s ON u.id=s.id_user
+                        JOIN instructor i ON s.instructor_id=i.id
+                            WHERE u.id=%s
+            ''', (user_id, ))
+            student = cur.fetchone()
+            if student:
+                cur.execute('''
+                    SELECT u.full_name FROM users u JOIN instructor i ON i.id_user=u.id WHERE i.id= %s
+                ''', (student[1], ))
+                instuctor_name = cur.fetchone()
+                if instuctor_name:
+                    mes=f'Студент:\n{student[0]}\n\nАвтоиструктор:\n{instuctor_name[0]}\nКоличество часов обучения: {student[2]}'
+                    bot.send_message(callback.message.chat.id, mes)
+
+    bot.edit_message_reply_markup(callback.message.chat.id, user_states[callback.message.chat.id]['message_id'], reply_markup=None)
+
 @bot.message_handler(func=lambda message: message.text=='Редактировать права управления' and get_user_state(message.chat.id) == ADMIN_MENU)
 def handle_admin_edit_roles(message):
     bot.send_message(message.chat.id, 'Введите ФИО пользователя, чьи права вы хотите изменить.')
@@ -316,11 +437,11 @@ def edit_role(callback):
             current_role = cur.fetchone()[0]
             cur.execute('UPDATE users SET role = %s WHERE id = %s', (new_role, target_user_id, ))
             if current_role=='instructor':
-                cur.execute('DELETE FROM instructor WHERE id =%s', (target_user_id,))
+                cur.execute('DELETE FROM instructor WHERE id_user =%s', (target_user_id,))
             elif current_role=='admin':
-                cur.execute('DELETE FROM admin WHERE id =%s', (target_user_id,))
+                cur.execute('DELETE FROM admin WHERE id_user =%s', (target_user_id,))
             elif current_role=='student':
-                cur.execute('DELETE FROM student WHERE id =%s', (target_user_id,))
+                cur.execute('DELETE FROM student WHERE id_user =%s', (target_user_id,))
 
             if new_role=='instructor':
                 cur.execute('''
@@ -460,3 +581,4 @@ def remove_students_from_instructor(message):
 
     bot.send_message(message.chat.id, result)
     set_user_state(message.chat.id, 'ADMIN_STUDENT_LIST')
+

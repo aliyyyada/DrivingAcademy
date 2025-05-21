@@ -177,7 +177,7 @@ def handle_student_upcoming_lessons(message):
     with DB_connect() as conn:
         with conn.cursor() as cur:
             cur.execute('''
-                SELECT 
+                SELECT DISTINCT ON (s.id)
                     s.id,
                     s.date,
                     s.start_time,
@@ -190,20 +190,20 @@ def handle_student_upcoming_lessons(message):
                 WHERE 
                     u.phone_number = %s  
                     AND s.date >= CURRENT_DATE
-                    AND (s.status = 'booked' OR s.status = 'canceled') 
+                    AND (b.status = 'booked' OR s.status = 'canceled') 
                 ORDER BY 
-                    s.date, s.start_time;   
+                    s.id, s.date, s.start_time;   
             ''', (user_states[message.chat.id]['phone'], ))
             schedule = cur.fetchall()
             if schedule:
                 markup = types.InlineKeyboardMarkup()
                 for item in schedule:
                     session_id=item[0]
-                    slot_date=item[1]
-                    slot_start_time=item[2]
-                    slot_end_time = item[3]
+                    slot_date=str(item[1])
+                    slot_start_time=str(item[2])
+                    slot_end_time = str(item[3])
                     slot_status = item[4]
-                    button_text = f'{slot_date} {slot_start_time}-{slot_end_time}' if slot_status=='booked' else f'{slot_date} {slot_start_time}-{slot_end_time} Отменено'
+                    button_text = f'{format_date(slot_date)} {format_time(slot_start_time)}-{format_time(slot_end_time)}' if slot_status=='booked' else f'{format_date(slot_date)} {format_time(slot_start_time)}-{format_time(slot_end_time)} Отменено'
                     markup.add(types.InlineKeyboardButton(button_text, callback_data=f'cancel_booking_session_{session_id}'))
                 bot.send_message(message.chat.id, 'Чтобы отменить запись, нажмите на неё.', reply_markup=markup)
 
@@ -222,7 +222,7 @@ def get_confirm_cancel(callback):
             ''', (session_id, ))
             session = cur.fetchone()
             if session:
-                sent_message=bot.send_message(callback.message.chat.id, f'Вы хотите отменить запись на {session[0]} {session[1]}-{session[2]}?', reply_markup=markup)
+                sent_message=bot.send_message(callback.message.chat.id, f'Вы хотите отменить запись на {format_date(str(session[0]))} {format_time(str(session[1]))}-{format_time(str(session[2]))}?', reply_markup=markup)
                 user_states[callback.message.chat.id]['message_id'] = sent_message.message_id
 
 @bot.callback_query_handler(func=lambda callback: callback.data.startswith('yes_confirm_cancel_session_'))
@@ -254,3 +254,7 @@ def cancel_booking(callback):
             bot.edit_message_reply_markup(callback.message.chat.id, user_states[callback.message.chat.id]['message_id'], reply_markup=None)
             bot.send_message(callback.message.chat.id, 'Запись на занятие отменена.')
             remove_notification_from_schedule(session_id)
+
+@bot.callback_query_handler(func=lambda callback: callback.data=='no_confirm_cancel_session')
+def no_cancel_booking(callback):
+    bot.send_message(callback.message.chat.id, 'Расписание оставлено без изменений.')
