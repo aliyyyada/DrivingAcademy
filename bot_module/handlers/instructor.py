@@ -26,7 +26,7 @@ def check_force_exit_to_main_menu(message):
 
 def instructor_menu(user_id):
     keyboard = [
-        [types.KeyboardButton('Список курсантов')],
+        [types.KeyboardButton('Список студентов')],
         [types.KeyboardButton('Редактировать расписание')],
         [types.KeyboardButton('Календарь расписания')],
         [types.KeyboardButton('Выйти из аккаунта')]
@@ -47,7 +47,7 @@ def instructor_menu(user_id):
 
 
 @bot.message_handler(
-    func=lambda message: message.text == 'Список курсантов' and get_user_state(message.chat.id) == INSTRUCTOR_MENU)
+    func=lambda message: message.text == 'Список студентов' and get_user_state(message.chat.id) == INSTRUCTOR_MENU)
 def handle_instructor_menu_student_list(message):
     update_phone_number(message.chat.id)
     with DB_connect() as conn:
@@ -72,7 +72,7 @@ def handle_instructor_menu_student_list(message):
                     respone += f"{full_name:<50}{hours:<20}{phone}\n"
                 bot.send_message(message.chat.id, respone)
             else:
-                bot.send_message(message.chat.id, 'У вас пока нет прикреплённых курсантов.')
+                bot.send_message(message.chat.id, 'У вас пока нет прикреплённых студентов.')
 
 
 @bot.message_handler(func=lambda message: message.text == 'Редактировать расписание' and get_user_state(

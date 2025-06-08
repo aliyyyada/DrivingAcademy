@@ -13,7 +13,7 @@ def admin_menu(user_id):
     keyboard = [[
         types.KeyboardButton('Редактировать профиль автоинструктора'),
         types.KeyboardButton('Редактировать профиль студента')],
-        [types.KeyboardButton('Список курсантов'),
+        [types.KeyboardButton('Список студентов'),
          types.KeyboardButton('Список пользователей')],
         [types.KeyboardButton('Редактировать права управления'),
          types.KeyboardButton('Выйти из аккаунта')],
@@ -25,7 +25,7 @@ def admin_menu(user_id):
     bot.send_message(user_id, 'Главное меню:', reply_markup=markup)
     set_user_state(user_id, ADMIN_MENU)
 
-@bot.message_handler(func=lambda message: message.text=='Список курсантов' and get_user_state(message.chat.id) == ADMIN_MENU)
+@bot.message_handler(func=lambda message: message.text=='Список студентов' and get_user_state(message.chat.id) == ADMIN_MENU)
 def handle_admin_get_student_list(message):
     keyboard = [
         [types.KeyboardButton('Список закрепленных студентов'), types.KeyboardButton('Закрепить студента')],
@@ -35,7 +35,7 @@ def handle_admin_get_student_list(message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     for row in keyboard:
         markup.row(*row)
-    bot.send_message(message.chat.id, 'Меню управления студентами и курсантами:', reply_markup=markup)
+    bot.send_message(message.chat.id, 'Меню управления студентами:', reply_markup=markup)
     set_user_state(message.chat.id, 'ADMIN_STUDENT_LIST')
 
 '''

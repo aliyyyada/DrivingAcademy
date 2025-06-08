@@ -17,6 +17,7 @@ def auth_callback_message(callback):
 
 @bot.callback_query_handler(func=lambda callback: callback.data in ['reg_student', 'reg_not_student'])
 def get_role_callback_meassage(callback):
+
     if callback.data == 'reg_student':
         user_states[callback.message.chat.id]['role']='student'
     else:
