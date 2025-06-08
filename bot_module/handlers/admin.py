@@ -7,6 +7,7 @@ from telebot import TeleBot
 from psycopg2.extras import DictCursor
 from bot_module.handlers.student import *
 from bot_module.loader import bot
+from bot_module.handlers.common import *
 
 def admin_menu(user_id):
     keyboard = [[
@@ -14,7 +15,8 @@ def admin_menu(user_id):
         types.KeyboardButton('Редактировать профиль студента')],
         [types.KeyboardButton('Список курсантов'),
          types.KeyboardButton('Список пользователей')],
-        [types.KeyboardButton('Редактировать права управления')],
+        [types.KeyboardButton('Редактировать права управления'),
+         types.KeyboardButton('Выйти из аккаунта')],
     ]
 
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -36,10 +38,12 @@ def handle_admin_get_student_list(message):
     bot.send_message(message.chat.id, 'Меню управления студентами и курсантами:', reply_markup=markup)
     set_user_state(message.chat.id, 'ADMIN_STUDENT_LIST')
 
+'''
 @bot.message_handler(func=lambda message: message.text =='Главное меню' and (get_user_state(message.chat.id)=='ADMIN_STUDENT_LIST' or get_user_state(message.chat.id)=='ADMIN_USER_LIST'))
 def handler_get_admin_menu(message):
     set_user_state(message.chat.id, ADMIN_MENU)
     admin_menu(message.chat.id)
+    '''
 
 @bot.message_handler(func=lambda message: message.text=='Список незакрепленных студентов' and get_user_state(message.chat.id)=='ADMIN_STUDENT_LIST')
 def handler_admin_untied_students(message):
@@ -384,7 +388,6 @@ def get_user_edit_role(message):
         with conn.cursor() as cur:
             cur.execute('SELECT telegram_id FROM users WHERE full_name = %s', (user_name,))
             user = cur.fetchone()
-            print(user[0], message.chat.id)
             if user:
                 target_user_id = user[0]
                 if target_user_id == str(message.chat.id):

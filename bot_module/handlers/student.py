@@ -12,7 +12,7 @@ from bot_module.calendar import handle_calendar_navigation, generate_calendar, s
 from bot_module.notification import add_notification_to_schedle, remove_notification_from_schedule
 
 def student_menu(user_id):
-    keyboard = [[types.KeyboardButton('Информация об обучении')], [types.KeyboardButton('Записаться на вождение')], [types.KeyboardButton('Предстоящие занятия')]]
+    keyboard = [[types.KeyboardButton('Информация об обучении')], [types.KeyboardButton('Записаться на вождение')], [types.KeyboardButton('Предстоящие занятия')], [types.KeyboardButton('Выйти из аккаунта')]]
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add(*[i for sublist in keyboard for i in sublist])
     bot.send_message(user_id, 'Главное меню:', reply_markup=markup)

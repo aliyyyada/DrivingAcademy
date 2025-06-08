@@ -12,23 +12,24 @@ from datetime import datetime, date, timedelta
 from apscheduler.schedulers.background import BackgroundScheduler
 from bot_module.notification import notify_student_about_new_slots, notify_student_about_lesson_cancel, \
     remove_notification_from_schedule
+from bot_module.handlers.common import *
+
+def check_force_exit_to_main_menu(message):
+    if message.text == 'Главное меню':
+        set_user_state(message.chat.id, RETURN_TO_INSTRUCTOR_MENU)
+        instructor_menu(message.chat.id)
+        return True
+    return False
 
 
-def update_phone_number(user_id):
-    if 'phone' not in user_states[user_id] or user_states[user_id]['phone'] == None:
-        with DB_connect() as conn:
-            with conn.cursor() as cur:
-                cur.execute('SELECT phone_number FROM users WHERE telegram_id = %s', (str(user_id),))
-                result = cur.fetchone()
-                phone = result[0] if result else None
-                user_states[user_id]['phone'] = phone
 
 
 def instructor_menu(user_id):
     keyboard = [
         [types.KeyboardButton('Список курсантов')],
         [types.KeyboardButton('Редактировать расписание')],
-        [types.KeyboardButton('Календарь расписания')]
+        [types.KeyboardButton('Календарь расписания')],
+        [types.KeyboardButton('Выйти из аккаунта')]
     ]
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add(*[i for sublist in keyboard for i in sublist])
@@ -42,8 +43,7 @@ def instructor_menu(user_id):
         'phone': phone
     }
     set_user_state(user_id, INSTRUCTOR_MENU)
-    # user_states[user_id]['state'] = INSTRUCTOR_MENU
-    print(user_id)
+
 
 
 @bot.message_handler(
@@ -96,6 +96,8 @@ def handle_instructor_menu_edit_schedule(message):
     message.chat.id) == EDIT_SCHEDULE)
 def handle_instructor_menu_edit_schedule_add_txt(message):
     bot.send_message(message.chat.id, 'Отправьте txt файл с расписанием в формате *ДД.ММ.ГГ ЧЧ:ММ-ЧЧ:ММ*')
+    if check_force_exit_to_main_menu(message):
+        return
     set_user_state(message.chat.id, WAITING_TXT_FILE)
     # user_states[message.chat.id]['state'] = WAITING_TXT_FILE
 
@@ -174,6 +176,8 @@ def handle_instructor_menu_edit_schedule_add_txt_recive(message):
     message.chat.id) == EDIT_SCHEDULE)
 def handle__instructor_menu_edit_schedule_add_message(message):
     bot.send_message(message.chat.id, 'Отправьте расписание в формате *ДД.ММ.ГГ ЧЧ:ММ-ЧЧ:ММ*')
+    if check_force_exit_to_main_menu(message):
+        return
     set_user_state(message.chat.id, WAITING_TEXT_SCHEDULE)
     # user_states[message.chat.id]['state'] = WAITING_TEXT_SCHEDULE
 
@@ -259,6 +263,7 @@ def build_cancel_sessions_markup(chat_id, page_num):
         s_student = session[4]
         s_status = session[5]
         b_status = session[6]
+        btn_text=''
         if s_status == 'free':
             btn_text = f"{format_date(s_date)} {format_time(s_start)}-{format_time(s_end)} | Свободно\n"
         elif b_status == 'booked' and s_status == 'booked':
@@ -363,6 +368,7 @@ def cancel_session(callback):
     session_id = callback.data.split('_')[3]
     with DB_connect() as conn:
         with conn.cursor() as cur:
+
             cur.execute('''
                 UPDATE session SET status = 'canceled' WHERE id = %s
             ''', (session_id,))
@@ -377,6 +383,7 @@ def cancel_session(callback):
                             UPDATE booking SET status = 'canceled' WHERE session_id = %s AND status='booked'
                         ''', (session_id,))
 
+
             conn.commit()
             bot.edit_message_reply_markup(callback.message.chat.id,
                                           user_states[callback.message.chat.id]['instructor_cancel_lesson_mess1'],
@@ -385,6 +392,8 @@ def cancel_session(callback):
                                           user_states[callback.message.chat.id]['instructor_cancel_lesson_mess2'],
                                           reply_markup=None)
             bot.send_message(callback.message.chat.id, "Занятие успешно отменено.")
+            notify_student_about_lesson_cancel(session_id)
+            remove_notification_from_schedule(session_id)
             set_user_state(callback.message.chat.id, EDIT_SCHEDULE)
 
 
@@ -393,21 +402,21 @@ def cancel_no_session(callback):
     bot.send_message(callback.message.chat.id, "Расписание оставлено без изменений.")
     set_user_state(callback.message.chat.id, EDIT_SCHEDULE)
 
-
-@bot.message_handler(
-    func=lambda message: message.text == 'Главное меню' and get_user_state(message.chat.id) == EDIT_SCHEDULE)
+'''
+@bot.message_handler(func=lambda message: message.text == 'Главное меню')
 def back_instructor_menu(message):
     set_user_state(message.chat.id, INSTRUCTOR_MENU)
     # user_states[message.chat.id]['state'] = INSTRUCTOR_MENU
     instructor_menu(message.chat.id)
+'''
+
 
 
 @bot.message_handler(
     func=lambda message: message.text == 'Календарь расписания' and get_user_state(message.chat.id) == INSTRUCTOR_MENU)
 def instructor_show_calendar(message):
     today = date.today()
-    print(user_states[message.chat.id]['phone'])
-    print(message.chat.id)
+
     show_calendar_message(bot, message.chat.id, today.year, today.month)
     set_user_state(message.chat.id, INSTRUCTOR_MENU)
     # user_states[message.chat.id]['state']=INSTRUCTOR_MENU

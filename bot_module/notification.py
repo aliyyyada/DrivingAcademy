@@ -135,4 +135,3 @@ def notify_student_about_up_coming_soon_lesson():
                 ''', (notification_id,))
 
             conn.commit()
-

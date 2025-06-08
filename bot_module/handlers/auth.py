@@ -85,7 +85,7 @@ def handle_reg_phone(message):
 def handle_reg_name(message):
     name = message.text.strip()
     user_states[message.chat.id]['name'] = name
-    bot.send_message(message.chat.id, 'Введите пароль:')
+    bot.send_message(message.chat.id, 'Придумайте пароль:')
     set_user_state(message.chat.id, 'REG_PASSWORD')
 
 
@@ -96,7 +96,7 @@ def handle_reg_password(message):
     password_hash = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
     password_hash_str = password_hash.decode('utf-8')
     user_states[message.chat.id]['password'] = password_hash_str
-
+    bot.delete_message(message.chat.id, message.message_id)
     keyboard = [[
         types.InlineKeyboardButton('Да', callback_data='reg_student'),
         types.InlineKeyboardButton('Нет', callback_data='reg_not_student')
@@ -125,6 +125,7 @@ def handle_auth_phone(message):
 def handle_auth_password(message):
     password = message.text.strip().encode('utf-8')
     phone_number = user_states[message.chat.id]['phone']
+    bot.delete_message(message.chat.id, message.message_id)
     with DB_connect() as conn:
         with conn.cursor(cursor_factory=DictCursor) as cur:
             cur.execute('SELECT * FROM users WHERE phone_number = %s', (phone_number, ))
